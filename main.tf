@@ -17,7 +17,6 @@ locals {
 resource "aws_autoscaling_group" "wireguard" {
   name = local.base_resource_name
 
-  launch_configuration = aws_launch_template.wireguard.name
   min_size             = var.asg_min_size
   desired_capacity     = var.asg_desired_capacity
   max_size             = var.asg_max_size
@@ -25,6 +24,11 @@ resource "aws_autoscaling_group" "wireguard" {
   health_check_type    = "EC2"
   termination_policies = ["OldestLaunchConfiguration", "OldestInstance"]
   target_group_arns    = var.target_group_arns
+
+  launch_template {
+    id      = aws_launch_template.wireguard.id
+    version = aws_launch_template.wireguard.latest_version
+  }
 
   lifecycle {
     create_before_destroy = true
@@ -61,8 +65,9 @@ resource "aws_launch_template" "wireguard" {
 
   vpc_security_group_ids = local.security_groups_ids
   key_name               = var.ssh_key_id
+  instance_type          = var.instance_type
 
-  user_data = templatefile(
+  user_data = base64encode(templatefile(
     "${path.module}/templates/user-data.tpl",
     {
       wg_server_private_key = data.aws_ssm_parameter.wg_server_private_key.value
@@ -80,7 +85,7 @@ resource "aws_launch_template" "wireguard" {
         }
       )
     }
-  )
+  ))
 
   block_device_mappings {
     device_name = "/dev/xvda"
