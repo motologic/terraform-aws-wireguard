@@ -1,42 +1,37 @@
-# We're using ubuntu images - this lets us grab the latest image for our region from Canonical
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-*-16.04-amd64-server-*"]
-  }
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-  owners = ["099720109477"] # Canonical
-}
-
 # turn the sg into a sorted list of string
 locals {
-  sg_wireguard_external = sort([aws_security_group.sg_wireguard_external.id])
-}
+  # make it easier to create resources with identifiable names
+  base_resource_name = var.base_resource_name == null ? replace("${var.project_team}-${var.env}-wireguard", "_", "-") : var.base_resource_name
 
-# clean up and concat the above wireguard default sg with the additional_security_group_ids
-locals {
+  sg_wireguard_external = sort([aws_security_group.sg_wireguard_external.id])
+
+  # clean up and concat the above wireguard default sg with the additional_security_group_ids
   security_groups_ids = compact(concat(var.additional_security_group_ids, local.sg_wireguard_external))
+
+  common_tags = {
+    Project_Team  = var.project_team
+    Resource_Name = "wireguard"
+    Environment   = var.env
+  }
 }
 
 resource "aws_launch_configuration" "wireguard_launch_config" {
-  name_prefix                 = "wireguard-${var.env}-"
+  name_prefix = "wireguard-${var.env}-"
+  #  name_prefix                 = local.base_resource_name
+
   image_id                    = var.ami_id == null ? data.aws_ami.ubuntu.id : var.ami_id
   instance_type               = var.instance_type
   key_name                    = var.ssh_key_id
-  iam_instance_profile        = (var.use_eip ? aws_iam_instance_profile.wireguard_profile[0].name : null)
+  iam_instance_profile        = (var.eip_id == null ? null : aws_iam_instance_profile.wireguard_profile[0].name)
   security_groups             = local.security_groups_ids
-  associate_public_ip_address = var.use_eip
+  associate_public_ip_address = var.eip_id == null ? false : true
   user_data = templatefile(
     "${path.module}/templates/user-data.tpl",
     {
       wg_server_private_key = data.aws_ssm_parameter.wg_server_private_key.value
       wg_server_net         = var.wg_server_net
       wg_server_port        = var.wg_server_port
-      use_eip               = var.use_eip ? "enabled" : "disabled"
+      use_eip               = var.eip_id == null ? "disabled" : "enabled"
       eip_id                = var.eip_id
       wg_server_interface   = var.wg_server_interface
 
@@ -50,13 +45,16 @@ resource "aws_launch_configuration" "wireguard_launch_config" {
     }
   )
 
+  #  tags = local.common_tags
+
   lifecycle {
     create_before_destroy = true
   }
 }
 
 resource "aws_autoscaling_group" "wireguard_asg" {
-  name                 = aws_launch_configuration.wireguard_launch_config.name
+  name = aws_launch_configuration.wireguard_launch_config.name
+
   launch_configuration = aws_launch_configuration.wireguard_launch_config.name
   min_size             = var.asg_min_size
   desired_capacity     = var.asg_desired_capacity
@@ -92,4 +90,28 @@ resource "aws_autoscaling_group" "wireguard_asg" {
       propagate_at_launch = true
     },
   ]
+
+  #  tag {
+  #    key                 = "Name"
+  #    value               = local.base_resource_name
+  #    propagate_at_launch = true
+  #  }
+  #
+  #  tag {
+  #    key                 = "Environment"
+  #    value               = var.env
+  #    propagate_at_launch = true
+  #  }
+  #
+  #  tag {
+  #    key                 = "Resource_Name"
+  #    value               = "wireguard"
+  #    propagate_at_launch = true
+  #  }
+  #
+  #  tag {
+  #    key                 = "Project_Team"
+  #    value               = var.project_team
+  #    propagate_at_launch = true
+  #  }
 }
