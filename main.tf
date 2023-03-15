@@ -1,12 +1,11 @@
 # turn the sg into a sorted list of string
 locals {
   # make it easier to create resources with identifiable names
-  base_resource_name = var.base_resource_name == null ? replace("${var.project_team}-${var.env}-wireguard", "_", "-") : var.base_resource_name
-
-  sg_wireguard_external = sort([aws_security_group.sg_wireguard_external.id])
+  base_resource_name = replace("${var.project_team}-${var.env}-wireguard", "_", "-")
 
   # clean up and concat the above wireguard default sg with the additional_security_group_ids
-  security_groups_ids = compact(concat(var.additional_security_group_ids, local.sg_wireguard_external))
+  sg_wireguard_external = sort([aws_security_group.wireguard_external.id])
+  security_groups_ids   = compact(concat(var.additional_security_group_ids, local.sg_wireguard_external))
 
   common_tags = {
     Project_Team  = var.project_team
@@ -15,16 +14,54 @@ locals {
   }
 }
 
-resource "aws_launch_configuration" "wireguard_launch_config" {
-  name_prefix = "wireguard-${var.env}-"
-  #  name_prefix                 = local.base_resource_name
+resource "aws_autoscaling_group" "wireguard" {
+  name = local.base_resource_name
 
-  image_id                    = var.ami_id == null ? data.aws_ami.ubuntu.id : var.ami_id
-  instance_type               = var.instance_type
-  key_name                    = var.ssh_key_id
-  iam_instance_profile        = (var.eip_id == null ? null : aws_iam_instance_profile.wireguard_profile[0].name)
-  security_groups             = local.security_groups_ids
-  associate_public_ip_address = var.eip_id == null ? false : true
+  launch_configuration = aws_launch_template.wireguard.name
+  min_size             = var.asg_min_size
+  desired_capacity     = var.asg_desired_capacity
+  max_size             = var.asg_max_size
+  vpc_zone_identifier  = var.subnet_ids
+  health_check_type    = "EC2"
+  termination_policies = ["OldestLaunchConfiguration", "OldestInstance"]
+  target_group_arns    = var.target_group_arns
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tag {
+    key                 = "Name"
+    value               = local.base_resource_name
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "Environment"
+    value               = var.env
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "Resource_Name"
+    value               = "wireguard"
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "Project_Team"
+    value               = var.project_team
+    propagate_at_launch = true
+  }
+}
+
+resource "aws_launch_template" "wireguard" {
+  name_prefix = local.base_resource_name
+  image_id    = var.ami_id == null ? data.aws_ami.ubuntu.id : var.ami_id
+
+  vpc_security_group_ids = local.security_groups_ids
+  key_name               = var.ssh_key_id
+
   user_data = templatefile(
     "${path.module}/templates/user-data.tpl",
     {
@@ -45,73 +82,23 @@ resource "aws_launch_configuration" "wireguard_launch_config" {
     }
   )
 
-  #  tags = local.common_tags
+  block_device_mappings {
+    device_name = "/dev/xvda"
 
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "aws_autoscaling_group" "wireguard_asg" {
-  name = aws_launch_configuration.wireguard_launch_config.name
-
-  launch_configuration = aws_launch_configuration.wireguard_launch_config.name
-  min_size             = var.asg_min_size
-  desired_capacity     = var.asg_desired_capacity
-  max_size             = var.asg_max_size
-  vpc_zone_identifier  = var.subnet_ids
-  health_check_type    = "EC2"
-  termination_policies = ["OldestLaunchConfiguration", "OldestInstance"]
-  target_group_arns    = var.target_group_arns
-
-  lifecycle {
-    create_before_destroy = true
+    ebs {
+      volume_size = 50
+    }
   }
 
-  tags = [
-    {
-      key                 = "Name"
-      value               = aws_launch_configuration.wireguard_launch_config.name
-      propagate_at_launch = true
-    },
-    {
-      key                 = "Project"
-      value               = "wireguard"
-      propagate_at_launch = true
-    },
-    {
-      key                 = "env"
-      value               = var.env
-      propagate_at_launch = true
-    },
-    {
-      key                 = "tf-managed"
-      value               = "True"
-      propagate_at_launch = true
-    },
-  ]
+  iam_instance_profile {
+    name = (var.eip_id == null ? null : aws_iam_instance_profile.wireguard_profile[0].name)
+  }
 
-  #  tag {
-  #    key                 = "Name"
-  #    value               = local.base_resource_name
-  #    propagate_at_launch = true
-  #  }
-  #
-  #  tag {
-  #    key                 = "Environment"
-  #    value               = var.env
-  #    propagate_at_launch = true
-  #  }
-  #
-  #  tag {
-  #    key                 = "Resource_Name"
-  #    value               = "wireguard"
-  #    propagate_at_launch = true
-  #  }
-  #
-  #  tag {
-  #    key                 = "Project_Team"
-  #    value               = var.project_team
-  #    propagate_at_launch = true
-  #  }
+  tag_specifications {
+    resource_type = "instance"
+
+    tags = local.common_tags
+  }
+
+  tags = local.common_tags
 }

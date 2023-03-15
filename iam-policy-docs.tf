@@ -11,7 +11,7 @@ data "aws_iam_policy_document" "ec2_assume_role" {
   }
 }
 
-data "aws_iam_policy_document" "wireguard_policy_doc" {
+data "aws_iam_policy_document" "allow_ec2_add_eip" {
   statement {
     actions = [
       "ec2:AssociateAddress",
@@ -23,7 +23,6 @@ data "aws_iam_policy_document" "wireguard_policy_doc" {
 
 # AWS Services - SSM Agent, Session Manager
 # https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-setting-up-messageAPIs.html
-# Note we do not have KMS/S3 perms, our use case is only SSH and that doesn't support encryption/logging
 data "aws_iam_policy_document" "ssm_agent_policy" {
   # allow Container Instances to interact with Systems Manager via SSM Agent
   statement {
@@ -52,7 +51,6 @@ data "aws_iam_policy_document" "ssm_agent_policy" {
       "ssmmessages:CreateDataChannel",
       "ssmmessages:OpenControlChannel",
       "ssmmessages:OpenDataChannel",
-      //      "s3:GetEncryptionConfiguration",
     ]
 
     # can't do much here
@@ -61,17 +59,6 @@ data "aws_iam_policy_document" "ssm_agent_policy" {
       "*",
     ]
   }
-
-  //  # (along with GetEncryptionConfiguration above) use KMS for additional encryption
-  //  statement {
-  //    actions = [
-  //      "kms:Decrypt"
-  //    ]
-  //  }
-  //
-  //  resources = [
-  //    var.ssm_kms_key_arn,
-  //  ]
 
   # allow Container Instances to interact with Session Manager
   statement {
