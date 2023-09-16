@@ -1,5 +1,6 @@
 resource "aws_eip" "wireguard" {
-  vpc = true
+  domain = "vpc"
+
   tags = {
     Name = "wireguard"
   }

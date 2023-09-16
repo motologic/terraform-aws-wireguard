@@ -55,5 +55,5 @@ key and client's public key in AWS SSM, which cloud-init will source and add to 
 
 ## TODO
 
-- remove `ssh_key_id` var and rely on ssm start-session?
 - look into moving from ubuntu to aws linux (start-session is complaining because there is no ec2-user)
+    - remove `ssh_key_id` var and rely on ssm start-session
