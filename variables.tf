@@ -1,6 +1,7 @@
 variable "ssh_key_id" {
   description = "A SSH public key ID to add to the VPN instance."
   type        = string
+  default     = null
 }
 
 variable "instance_type" {

@@ -64,7 +64,7 @@ resource "aws_launch_template" "wireguard" {
   image_id    = var.ami_id == null ? data.aws_ami.amazon_linux_2023.id : var.ami_id
 
   vpc_security_group_ids = local.security_groups_ids
-  key_name               = var.ssh_key_id
+  key_name               = var.ssh_key_id == null ? null : var.ssh_key_id
   instance_type          = var.instance_type
 
   user_data = base64encode(templatefile(
@@ -86,6 +86,12 @@ resource "aws_launch_template" "wireguard" {
       )
     }
   ))
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
 
   block_device_mappings {
     device_name = "/dev/xvda"
