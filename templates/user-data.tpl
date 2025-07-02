@@ -1,32 +1,40 @@
 #!/bin/bash -v
-apt-get update -y
-DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -o Dpkg::Options::="--force-confnew"
-apt-get install -y wireguard-dkms wireguard-tools awscli
 
+# we go with the eip if it is provided
+if [ "${use_eip}" != "disabled" ]; then
+  export TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+  export INSTANCE_ID=$(curl -H "X-aws-ec2-metadata-token: $${TOKEN}" -s http://169.254.169.254/latest/meta-data/instance-id)
+  export REGION=$(curl -H "X-aws-ec2-metadata-token: $${TOKEN}" -fsq http://169.254.169.254/latest/meta-data/placement/availability-zone | sed 's/[a-z]$//')
+  aws --region $${REGION} ec2 associate-address --allocation-id ${eip_id} --instance-id $${INSTANCE_ID}
+fi
+
+# install wireguard
+dnf install -y wireguard-tools nftables
+modprobe wireguard
+
+# set up
 cat > /etc/wireguard/wg0.conf <<- EOF
 [Interface]
 Address = ${wg_server_net}
 PrivateKey = ${wg_server_private_key}
 ListenPort = ${wg_server_port}
-PostUp   = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o ${wg_server_interface} -j MASQUERADE
-PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o ${wg_server_interface} -j MASQUERADE
 
 ${peers}
 EOF
 
-# we go with the eip if it is provided
-if [ "${use_eip}" != "disabled" ]; then
-  export INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-  export REGION=$(curl -fsq http://169.254.169.254/latest/meta-data/placement/availability-zone | sed 's/[a-z]$//')
-  aws --region $${REGION} ec2 associate-address --allocation-id ${eip_id} --instance-id $${INSTANCE_ID}
-fi
-
+# cleanup
 chown -R root:root /etc/wireguard/
 chmod -R og-rwx /etc/wireguard/*
-sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.conf
-sysctl -p
-ufw allow ssh
-ufw allow ${wg_server_port}/udp
-ufw --force enable
-systemctl enable wg-quick@wg0.service
-systemctl start wg-quick@wg0.service
+
+# enable ip forwarding
+echo 'net.ipv4.ip_forward=1' | tee /etc/sysctl.d/99-wireguard.conf
+sysctl -p /etc/sysctl.d/99-wireguard.conf
+
+# enable NAT
+nft add table ip nat
+nft add chain ip nat postrouting '{ type nat hook postrouting priority 100; }'
+nft add rule ip nat postrouting oifname ${wg_server_interface} masquerade
+
+# enable it
+sudo systemctl enable wg-quick@wg0
+sudo systemctl start wg-quick@wg0

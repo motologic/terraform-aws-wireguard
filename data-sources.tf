@@ -2,39 +2,17 @@ data "aws_region" "current" {}
 
 data "aws_caller_identity" "current" {}
 
-# We're using ubuntu images - this lets us grab the latest image for our region from Canonical
-data "aws_ami" "ubuntu" {
+data "aws_ami" "amazon_linux_2023" {
+  owners      = ["amazon"] # 137112412989
   most_recent = true
 
   filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-*-${var.ubuntu_version}-amd64-server-*"]
+    name = "name"
+    # note that the non-ECS AWS Linux 2023 is at 2023.7.x; the ECS is still at 2023.0.x
+    # aws --profile logic_dev ssm get-parameters --names /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64
+    values = ["al2023-ami-2023*-kernel-*-x86_64"]
   }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-
-  owners = ["099720109477"] # Canonical
 }
-
-#data "aws_ami" "amazon_linux_2023" {
-#  #  owners = ["137112412989"] # amazon
-#  owners = ["amazon"] # 137112412989
-#  most_recent = true
-#
-#  filter {
-#    name   = "name"
-##    values = ["al2023-ami-ecs-hvm-2023*-x86_64"]
-#    values = ["al2023-ami-2023*-x86_64"]
-#  }
-##
-##  filter {
-##    name   = "virtualization-type"
-##    values = ["hvm"]
-##  }
-#}
 
 data "aws_ssm_parameter" "wg_server_private_key" {
   name = var.wg_server_private_key_param

@@ -61,7 +61,7 @@ resource "aws_autoscaling_group" "wireguard" {
 
 resource "aws_launch_template" "wireguard" {
   name_prefix = local.base_resource_name
-  image_id    = var.ami_id == null ? data.aws_ami.ubuntu.id : var.ami_id
+  image_id    = var.ami_id == null ? data.aws_ami.amazon_linux_2023.id : var.ami_id
 
   vpc_security_group_ids = local.security_groups_ids
   key_name               = var.ssh_key_id

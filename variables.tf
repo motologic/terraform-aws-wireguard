@@ -99,18 +99,10 @@ variable "ami_id" {
 variable "wg_server_interface" {
   description = "The default interface to forward network traffic to."
   type        = string
-  default     = "eth0"
+  default     = "enX0"
 }
 
 variable "project_team" {
   description = "Prefix for resource names - shop, rev, or logic"
   type        = string
-}
-
-variable "ubuntu_version" {
-  description = "The Ubuntu version to use for the server"
-  type        = number
-
-  # NOTE: Ubuntu 22.04 is an LTS version, EOL 2027
-  default = 22.04
 }
